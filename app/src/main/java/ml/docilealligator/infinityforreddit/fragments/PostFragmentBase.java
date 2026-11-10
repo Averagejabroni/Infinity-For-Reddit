@@ -156,6 +156,8 @@ public abstract class PostFragmentBase extends Fragment {
     protected final Map<String, String> subredditOrUserIcons = new HashMap<>();
     private View.OnLayoutChangeListener onLayoutChangeListener;
     private int recyclerViewWidth;
+    private int tabletColumnWidth;
+    private int tabletPreviewHeight;
 
     public PostFragmentBase() {
         // Required empty public constructor
@@ -324,19 +326,63 @@ public abstract class PostFragmentBase extends Fragment {
             return false;
         });
 
+        RecyclerView recyclerView = getPostRecyclerView();
+        boolean tabletLandscape = isTabletLandscape(getResources());
+        if (tabletLandscape) {
+            // Keep the scroll surface full width while centering each post and footer.
+            recyclerView.addItemDecoration(new RecyclerView.ItemDecoration() {
+                @Override
+                public void getItemOffsets(@NonNull Rect outRect, @NonNull View view,
+                                           @NonNull RecyclerView parent, @NonNull RecyclerView.State state) {
+                    if (tabletColumnWidth > 0) {
+                        int extraWidth = parent.getWidth() - parent.getPaddingLeft()
+                                - parent.getPaddingRight() - tabletColumnWidth;
+                        outRect.left = Math.max(0, extraWidth) / 2;
+                        outRect.right = Math.max(0, extraWidth) - outRect.left;
+                    }
+                }
+            });
+            recyclerViewWidth = 0;
+            tabletColumnWidth = 0;
+            tabletPreviewHeight = 0;
+        }
         onLayoutChangeListener = (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             int width = right - left;
-            if (recyclerViewWidth == width) {
+            int columnWidth = width;
+            int previewHeight = 0;
+            if (tabletLandscape) {
+                int usableWidth = width - v.getPaddingLeft() - v.getPaddingRight();
+                int usableHeight = bottom - top - v.getPaddingTop() - v.getPaddingBottom();
+                if (usableWidth <= 0 || usableHeight <= 0) {
+                    return;
+                }
+                columnWidth = Math.min(usableWidth, usableHeight);
+                previewHeight = Math.max(1, Math.round(usableHeight * 0.75f));
+            }
+            if (recyclerViewWidth == width && (!tabletLandscape
+                    || (tabletColumnWidth == columnWidth && tabletPreviewHeight == previewHeight))) {
                 return;
             }
             recyclerViewWidth = width;
+            if (tabletLandscape) {
+                tabletColumnWidth = columnWidth;
+                tabletPreviewHeight = previewHeight;
+            }
             PostRecyclerViewAdapter adapter = getPostAdapter();
             if (adapter != null) {
                 if (mStaggeredGridLayoutManager != null) {
-                    width /= mStaggeredGridLayoutManager.getSpanCount();
+                    columnWidth /= mStaggeredGridLayoutManager.getSpanCount();
                 }
-                int finalWidth = width;
+                int finalWidth = columnWidth;
+                int finalPreviewHeight = previewHeight;
                 v.post(() -> {
+                    if (onLayoutChangeListener == null || !v.isAttachedToWindow()) {
+                        return;
+                    }
+                    if (tabletLandscape) {
+                        recyclerView.invalidateItemDecorations();
+                        adapter.setTabletPreviewBounds(finalWidth, finalPreviewHeight);
+                    }
                     adapter.provideItemWidth(Utils.convertPxToDp(finalWidth, mActivity));
                     refreshAdapter();
                 });
@@ -496,7 +542,15 @@ public abstract class PostFragmentBase extends Fragment {
 
     protected abstract void refreshAdapter();
 
+    protected final boolean isTabletLandscape(Resources resources) {
+        return resources.getBoolean(R.bool.isTablet)
+                && resources.getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+    }
+
     protected final int getNColumns(Resources resources) {
+        if (isTabletLandscape(resources)) {
+            return 1;
+        }
         final boolean foldEnabled = mSharedPreferences.getBoolean(SharedPreferencesUtils.ENABLE_FOLD_SUPPORT, false);
         if (resources.getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
             switch (postLayout) {

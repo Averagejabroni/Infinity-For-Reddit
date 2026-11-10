@@ -1254,7 +1254,7 @@ public class PostFragment extends PostFragmentBase implements FragmentCommunicat
         int nColumns = getNColumns(getResources());
         if (nColumns == 1) {
             mLinearLayoutManager = new LinearLayoutManagerBugFixed(mActivity);
-            if (binding.recyclerViewPostFragment.getItemDecorationCount() > 0) {
+            if (!isTabletLandscape(getResources()) && binding.recyclerViewPostFragment.getItemDecorationCount() > 0) {
                 binding.recyclerViewPostFragment.removeItemDecorationAt(0);
             }
             binding.recyclerViewPostFragment.setLayoutManager(mLinearLayoutManager);

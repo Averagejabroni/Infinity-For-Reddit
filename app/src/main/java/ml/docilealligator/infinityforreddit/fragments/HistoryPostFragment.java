@@ -513,7 +513,7 @@ public class HistoryPostFragment extends PostFragmentBase implements FragmentCom
         int nColumns = getNColumns(getResources());
         if (nColumns == 1) {
             mLinearLayoutManager = new LinearLayoutManagerBugFixed(mActivity);
-            if (binding.recyclerViewHistoryPostFragment.getItemDecorationCount() > 0) {
+            if (!isTabletLandscape(getResources()) && binding.recyclerViewHistoryPostFragment.getItemDecorationCount() > 0) {
                 binding.recyclerViewHistoryPostFragment.removeItemDecorationAt(0);
             }
             binding.recyclerViewHistoryPostFragment.setLayoutManager(mLinearLayoutManager);
