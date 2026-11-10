@@ -8,6 +8,7 @@ import pl.droidsonroids.gif.GifImageView;
 
 public class AspectRatioGifImageView extends GifImageView {
     private float ratio;
+    private int previewHeightLimit;
 
     public AspectRatioGifImageView(Context context) {
         super(context);
@@ -33,6 +34,13 @@ public class AspectRatioGifImageView extends GifImageView {
         }
     }
 
+    public void setPreviewHeightLimit(int height) {
+        if (previewHeightLimit != height) {
+            previewHeightLimit = height;
+            requestLayout();
+        }
+    }
+
     private void init(Context context, AttributeSet attrs) {
         if (attrs != null) {
             TypedArray a = context.obtainStyledAttributes(attrs, com.santalu.aspectratioimageview.R.styleable.AspectRatioImageView);
@@ -54,6 +62,9 @@ public class AspectRatioGifImageView extends GifImageView {
                     width = (int) ((float) height / this.ratio);
                 }
 
+                if (previewHeightLimit > 0) {
+                    height = Math.min(height, previewHeightLimit);
+                }
                 this.setMeasuredDimension(width, height);
             }
         }
