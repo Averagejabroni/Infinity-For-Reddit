@@ -921,14 +921,23 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
                         post.isModerator() ? mModeratorColor : mUsernameColor);
 
                 if (holder instanceof PostBaseVideoAutoplayViewHolder) {
-                    ((PostBaseVideoAutoplayViewHolder) holder).toroPlayer.previewImageView.setVisibility(View.VISIBLE);
+                    VideoAutoplayImpl player = ((PostBaseVideoAutoplayViewHolder) holder).toroPlayer;
+                    player.previewImageView.setVisibility(View.VISIBLE);
                     Post.Preview preview = getSuitablePreview(post.getPreviews());
-                    if (!mFixedHeightPreviewInCard && preview != null) {
-                        ((PostBaseVideoAutoplayViewHolder) holder).toroPlayer.aspectRatioFrameLayout.setAspectRatio((float) preview.getPreviewWidth() / preview.getPreviewHeight());
-                        mGlide.load(preview.getPreviewUrl()).centerInside().downsample(mSaveMemoryCenterInsideDownsampleStrategy).into(((PostBaseVideoAutoplayViewHolder) holder).toroPlayer.previewImageView);
-                    } else {
-                        ((PostBaseVideoAutoplayViewHolder) holder).toroPlayer.aspectRatioFrameLayout.setAspectRatio(1);
+                    float aspectRatio = 1;
+                    if (preview != null && (!mFixedHeightPreviewInCard || tabletPreviewHeight > 0)) {
+                        if (tabletPreviewHeight == 0 || (preview.getPreviewWidth() > 0 && preview.getPreviewHeight() > 0)) {
+                            aspectRatio = (float) preview.getPreviewWidth() / preview.getPreviewHeight();
+                        }
+                        mGlide.load(preview.getPreviewUrl()).centerInside()
+                                .downsample(mSaveMemoryCenterInsideDownsampleStrategy).into(player.previewImageView);
                     }
+                    if (tabletPreviewHeight > 0) {
+                        // The outer frame reserves space. The player fits the actual video inside it.
+                        aspectRatio = Math.max(aspectRatio, (float) tabletColumnWidth / tabletPreviewHeight);
+                        player.previewImageView.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                    }
+                    player.aspectRatioFrameLayout.setAspectRatio(aspectRatio);
                     if (!((PostBaseVideoAutoplayViewHolder) holder).toroPlayer.isManuallyPaused) {
                         if (mFragment.getMasterMutingOption() == null) {
                             ((PostBaseVideoAutoplayViewHolder) holder).toroPlayer.setVolume(mMuteAutoplayingVideos || (post.isNSFW() && mMuteNSFWVideo) ? 0f : 1f);
@@ -998,14 +1007,7 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
                                     ((PostWithPreviewTypeViewHolder) holder).imageWrapperFrameLayout.setVisibility(View.VISIBLE);
                                 }
                                 ((PostWithPreviewTypeViewHolder) holder).imageView.setVisibility(View.VISIBLE);
-                                if (mFixedHeightPreviewInCard || (preview.getPreviewWidth() <= 0 || preview.getPreviewHeight() <= 0)) {
-                                    int height = (int) (400 * mScale);
-                                    ((PostWithPreviewTypeViewHolder) holder).imageView.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                                    ((PostWithPreviewTypeViewHolder) holder).imageView.getLayoutParams().height = height;
-                                } else {
-                                    ((PostWithPreviewTypeViewHolder) holder).imageView
-                                            .setRatio((float) preview.getPreviewHeight() / preview.getPreviewWidth());
-                                }
+                                sizeImagePreview(((PostWithPreviewTypeViewHolder) holder).imageView, preview);
                                 ((PostWithPreviewTypeViewHolder) holder).imageView.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
                                     @Override
                                     public void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft, int oldTop, int oldRight, int oldBottom) {
@@ -1047,6 +1049,7 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
                         } else {
                             ((PostBaseGalleryTypeViewHolder) holder).adapter.setRatio(-1);
                         }
+                        ((PostBaseGalleryTypeViewHolder) holder).adapter.setPreviewHeightLimit(tabletPreviewHeight);
                         ((PostBaseGalleryTypeViewHolder) holder).adapter.setGalleryImages(post.getGallery());
                         ((PostBaseGalleryTypeViewHolder) holder).adapter.setBlurImage(
                                 (post.isNSFW() && mNeedBlurNsfw && !(mDoNotBlurNsfwInNsfwSubreddits && mFragment != null && mFragment.getIsNsfwSubreddit())) || (post.isSpoiler() && mNeedBlurSpoiler));
@@ -1337,14 +1340,7 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
                             if (preview != null) {
                                 ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery.setVisibility(View.VISIBLE);
 
-                                if (mFixedHeightPreviewInCard || (preview.getPreviewWidth() <= 0 || preview.getPreviewHeight() <= 0)) {
-                                    int height = (int) (400 * mScale);
-                                    ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                                    ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery.getLayoutParams().height = height;
-                                } else {
-                                    ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery
-                                            .setRatio((float) preview.getPreviewHeight() / preview.getPreviewWidth());
-                                }
+                                sizeImagePreview(((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery, preview);
                                 ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
                                     @Override
                                     public void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft, int oldTop, int oldRight, int oldBottom) {
@@ -1370,14 +1366,7 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
                                     ((PostGalleryViewHolder) holder).binding.videoOrGifIndicatorImageViewItemPostGallery.setVisibility(View.VISIBLE);
                                     ((PostGalleryViewHolder) holder).binding.videoOrGifIndicatorImageViewItemPostGallery.setImageDrawable(ContextCompat.getDrawable(mActivity, R.drawable.ic_play_circle_36dp));
 
-                                    if (mFixedHeightPreviewInCard || (preview.getPreviewWidth() <= 0 || preview.getPreviewHeight() <= 0)) {
-                                        int height = (int) (400 * mScale);
-                                        ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                                        ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery.getLayoutParams().height = height;
-                                    } else {
-                                        ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery
-                                                .setRatio((float) preview.getPreviewHeight() / preview.getPreviewWidth());
-                                    }
+                                    sizeImagePreview(((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery, preview);
                                     ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
                                         @Override
                                         public void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft, int oldTop, int oldRight, int oldBottom) {
@@ -1400,14 +1389,7 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
                                 ((PostGalleryViewHolder) holder).binding.videoOrGifIndicatorImageViewItemPostGallery.setVisibility(View.VISIBLE);
                                 ((PostGalleryViewHolder) holder).binding.videoOrGifIndicatorImageViewItemPostGallery.setImageDrawable(ContextCompat.getDrawable(mActivity, R.drawable.ic_play_circle_36dp));
 
-                                if (mFixedHeightPreviewInCard || (preview.getPreviewWidth() <= 0 || preview.getPreviewHeight() <= 0)) {
-                                    int height = (int) (400 * mScale);
-                                    ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                                    ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery.getLayoutParams().height = height;
-                                } else {
-                                    ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery
-                                            .setRatio((float) preview.getPreviewHeight() / preview.getPreviewWidth());
-                                }
+                                sizeImagePreview(((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery, preview);
                                 ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
                                     @Override
                                     public void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft, int oldTop, int oldRight, int oldBottom) {
@@ -1429,14 +1411,7 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
                                 ((PostGalleryViewHolder) holder).binding.videoOrGifIndicatorImageViewItemPostGallery.setVisibility(View.VISIBLE);
                                 ((PostGalleryViewHolder) holder).binding.videoOrGifIndicatorImageViewItemPostGallery.setImageDrawable(ContextCompat.getDrawable(mActivity, R.drawable.ic_link_post_type_indicator_day_night_24dp));
 
-                                if (mFixedHeightPreviewInCard || (preview.getPreviewWidth() <= 0 || preview.getPreviewHeight() <= 0)) {
-                                    int height = (int) (400 * mScale);
-                                    ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery.setScaleType(ImageView.ScaleType.CENTER_CROP);
-                                    ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery.getLayoutParams().height = height;
-                                } else {
-                                    ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery
-                                            .setRatio((float) preview.getPreviewHeight() / preview.getPreviewWidth());
-                                }
+                                sizeImagePreview(((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery, preview);
                                 ((PostGalleryViewHolder) holder).binding.imageViewItemPostGallery.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
                                     @Override
                                     public void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft, int oldTop, int oldRight, int oldBottom) {
@@ -1490,7 +1465,8 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
                     } else {
                         ((PostGalleryBaseGalleryTypeViewHolder) holder).adapter.setRatio(-1);
                     }
-                    ((PostGalleryBaseGalleryTypeViewHolder) holder).adapter.setGalleryImages(post.getGallery());
+                    ((PostGalleryBaseGalleryTypeViewHolder) holder).adapter.setPreviewHeightLimit(tabletPreviewHeight);
+                        ((PostGalleryBaseGalleryTypeViewHolder) holder).adapter.setGalleryImages(post.getGallery());
                     ((PostGalleryBaseGalleryTypeViewHolder) holder).adapter.setBlurImage(
                             (post.isNSFW() && mNeedBlurNsfw && !(mDoNotBlurNsfwInNsfwSubreddits && mFragment != null && mFragment.getIsNsfwSubreddit())) || (post.isSpoiler() && mNeedBlurSpoiler));
                 }
@@ -2116,6 +2092,28 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
 
     public void setCanPlayVideo(boolean canPlayVideo) {
         this.canPlayVideo = canPlayVideo;
+    }
+
+    private int tabletColumnWidth;
+    private int tabletPreviewHeight;
+
+    public void setTabletPreviewBounds(int columnWidth, int previewHeight) {
+        tabletColumnWidth = columnWidth;
+        tabletPreviewHeight = previewHeight;
+    }
+
+    private void sizeImagePreview(AspectRatioGifImageView image, Post.Preview preview) {
+        boolean hasDimensions = preview.getPreviewWidth() > 0 && preview.getPreviewHeight() > 0;
+        if (tabletPreviewHeight > 0) {
+            image.setPreviewHeightLimit(tabletPreviewHeight);
+            image.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            image.setRatio(hasDimensions ? (float) preview.getPreviewHeight() / preview.getPreviewWidth() : 1);
+        } else if (mFixedHeightPreviewInCard || !hasDimensions) {
+            image.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            image.getLayoutParams().height = (int) (400 * mScale);
+        } else {
+            image.setRatio((float) preview.getPreviewHeight() / preview.getPreviewWidth());
+        }
     }
 
     public void provideItemWidth(int width) {

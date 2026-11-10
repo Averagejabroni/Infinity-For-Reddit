@@ -85,7 +85,11 @@ public class PostGalleryTypeImageRecyclerViewAdapter extends RecyclerView.Adapte
 
     @Override
     public void onBindViewHolder(@NonNull ImageViewHolder holder, int position) {
-        if (isGridLayout) {
+        if (previewHeightLimit > 0) {
+            holder.binding.imageViewItemGalleryImageInPostFeed.setPreviewHeightLimit(previewHeightLimit);
+            holder.binding.imageViewItemGalleryImageInPostFeed.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            holder.binding.imageViewItemGalleryImageInPostFeed.setRatio(isGridLayout || ratio <= 0 ? 1 : ratio);
+        } else if (isGridLayout) {
             holder.binding.imageViewItemGalleryImageInPostFeed.setScaleType(ImageView.ScaleType.CENTER_CROP);
             holder.binding.imageViewItemGalleryImageInPostFeed.setRatio(1);
         } else if (ratio < 0) {
@@ -171,7 +175,7 @@ public class PostGalleryTypeImageRecyclerViewAdapter extends RecyclerView.Adapte
             }
         });
         if (blurImage) {
-            if (isGridLayout) {
+            if (isGridLayout && previewHeightLimit == 0) {
                 imageRequestBuilder
                         .apply(RequestOptions.bitmapTransform(new MultiTransformation<>(new CenterCrop(), new RoundedCornersTransformation(32, 0), new BlurTransformation(50, 2))))
                         .into(holder.binding.imageViewItemGalleryImageInPostFeed);
@@ -180,7 +184,7 @@ public class PostGalleryTypeImageRecyclerViewAdapter extends RecyclerView.Adapte
                         .into(holder.binding.imageViewItemGalleryImageInPostFeed);
             }
         } else {
-            if (isGridLayout) {
+            if (isGridLayout && previewHeightLimit == 0) {
                 imageRequestBuilder
                         .apply(RequestOptions.bitmapTransform(new MultiTransformation<>(new CenterCrop(), new RoundedCornersTransformation(32, 0))))
                         .downsample(saveMemoryCenterInisdeDownsampleStrategy).into(holder.binding.imageViewItemGalleryImageInPostFeed);
@@ -227,6 +231,12 @@ public class PostGalleryTypeImageRecyclerViewAdapter extends RecyclerView.Adapte
 
     public void setBlurImage(boolean blurImage) {
         this.blurImage = blurImage;
+    }
+
+    private int previewHeightLimit;
+
+    public void setPreviewHeightLimit(int height) {
+        previewHeightLimit = height;
     }
 
     public void setRatio(float ratio) {
