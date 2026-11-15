@@ -4,25 +4,81 @@ on:
   push:
     branches: [for-tablets]
   workflow_dispatch:
+    inputs:
+      configure_reddit:
+        description: Build with private Reddit configuration
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   debug-apk:
+    if: github.ref == 'refs/heads/for-tablets'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
-      - name: Assemble debug APK
-        run: bash ./gradlew --no-daemon :app:assembleDebug
-      - uses: actions/upload-artifact@v4
         with:
-          name: Infinity-for-Tablets-debug
+          cache-disabled: ${{ inputs.configure_reddit == true }}
+      - name: Assemble smoke-test APK
+        if: inputs.configure_reddit != true
+        run: bash ./gradlew --no-daemon :app:assembleDebug
+      - name: Assemble Reddit-configured APK
+        if: inputs.configure_reddit == true
+        env:
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
+          APK_ENCRYPTION_PASSPHRASE: ${{ github.event.repository.private == false && secrets.APK_ENCRYPTION_PASSPHRASE || '' }}
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          if [[ ! "$REDDIT_CLIENT_ID" =~ ^[a-zA-Z0-9_-]+$ || ! "$REDDIT_USER_AGENT" =~ [^[:space:]] || "$REDDIT_USER_AGENT" =~ [[:cntrl:]] ]]; then
+            echo "::error::Set REDDIT_CLIENT_ID and REDDIT_USER_AGENT in GitHub Actions secrets."
+            exit 1
+          fi
+          if [[ "$REPOSITORY_PRIVATE" == false && ( ! "$APK_ENCRYPTION_PASSPHRASE" =~ [^[:space:]] || "$APK_ENCRYPTION_PASSPHRASE" =~ [[:cntrl:]] ) ]]; then
+            echo "::error::Set a single-line APK_ENCRYPTION_PASSPHRASE to protect the configured APK on this public repository."
+            exit 1
+          fi
+          unset APK_ENCRYPTION_PASSPHRASE
+          bash ./gradlew --no-daemon :app:assembleDebug
+      - name: Verify APK signature and package
+        run: |
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
+          "$build_tools/apksigner" verify --verbose "$apk"
+          package=$("$build_tools/aapt" dump badging "$apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+          test "$package" = ml.docilealligator.infinityforreddit.debug
+          sha256sum "$apk"
+      - name: Encrypt configured APK for public artifact storage
+        if: inputs.configure_reddit == true && github.event.repository.private == false
+        env:
+          APK_ENCRYPTION_PASSPHRASE: ${{ secrets.APK_ENCRYPTION_PASSPHRASE }}
+        run: |
+          printf '%s\n' "$APK_ENCRYPTION_PASSPHRASE" | gpg --batch --pinentry-mode loopback \
+            --passphrase-fd 0 --symmetric --cipher-algo AES256 \
+            --output Infinity-for-Tablets-debug.apk.gpg app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        if: inputs.configure_reddit == true && github.event.repository.private == false
+        with:
+          name: Infinity-for-Tablets-debug-encrypted
+          path: Infinity-for-Tablets-debug.apk.gpg
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: inputs.configure_reddit != true || github.event.repository.private == true
+        with:
+          name: ${{ inputs.configure_reddit == true && 'Infinity-for-Tablets-debug' || 'Infinity-for-Tablets-smoke-test' }}
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
