@@ -62,6 +62,7 @@ import com.bumptech.glide.request.RequestListener;
 import com.bumptech.glide.request.RequestOptions;
 import com.bumptech.glide.request.target.Target;
 import com.google.android.material.button.MaterialButton;
+import com.google.android.material.card.MaterialCardView;
 import com.google.android.material.loadingindicator.LoadingIndicator;
 import com.google.common.collect.ImmutableList;
 import com.libRG.CustomTextView;
@@ -909,6 +910,7 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
             }
 
             if (holder instanceof PostBaseViewHolder) {
+                PostBaseViewHolder cardHolder = (PostBaseViewHolder) holder;
                 if (mHideSubredditAndUserPrefix) {
                     ((PostBaseViewHolder) holder).subredditTextView.setText(post.getSubredditName());
                     ((PostBaseViewHolder) holder).userTextView.setText(post.getAuthor());
@@ -922,6 +924,7 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
 
                 if (holder instanceof PostBaseVideoAutoplayViewHolder) {
                     VideoAutoplayImpl player = ((PostBaseVideoAutoplayViewHolder) holder).toroPlayer;
+                    cardHolder.setTabletMediaInsets(player.aspectRatioFrameLayout);
                     player.previewImageView.setVisibility(View.VISIBLE);
                     Post.Preview preview = getSuitablePreview(post.getPreviews());
                     float aspectRatio = 1;
@@ -948,6 +951,9 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
 
                     ((PostBaseVideoAutoplayViewHolder) holder).toroPlayer.loadVideo(position);
                 } else if (holder instanceof PostWithPreviewTypeViewHolder) {
+                    PostWithPreviewTypeViewHolder previewHolder = (PostWithPreviewTypeViewHolder) holder;
+                    cardHolder.setTabletMediaInsets(previewHolder.imageWrapperFrameLayout != null
+                            ? previewHolder.imageWrapperFrameLayout : previewHolder.imageView);
                     if (post.getPostType() == Post.VIDEO_TYPE) {
                         ((PostWithPreviewTypeViewHolder) holder).videoOrGifIndicator.setVisibility(View.VISIBLE);
                         ((PostWithPreviewTypeViewHolder) holder).videoOrGifIndicator.setImageDrawable(ContextCompat.getDrawable(mActivity, R.drawable.ic_play_circle_36dp));
@@ -1032,6 +1038,8 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
                         }
                     }
                 } else if (holder instanceof PostBaseGalleryTypeViewHolder) {
+                    PostBaseGalleryTypeViewHolder galleryHolder = (PostBaseGalleryTypeViewHolder) holder;
+                    cardHolder.setTabletMediaInsets(galleryHolder.frameLayout);
                     int gallerySize = post.getGallery().size();
                     if (mDataSavingMode && mDisableImagePreview) {
                         ((PostBaseGalleryTypeViewHolder) holder).noPreviewImageView.setVisibility(View.VISIBLE);
@@ -2096,8 +2104,10 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
 
     private int tabletColumnWidth;
     private int tabletPreviewHeight;
+    private int tabletMediaInsetWidth;
 
-    public void setTabletPreviewBounds(int columnWidth, int previewHeight) {
+    public void setTabletPreviewBounds(int columnWidth, int previewHeight, int mediaInsetWidth) {
+        tabletMediaInsetWidth = mediaInsetWidth;
         tabletColumnWidth = columnWidth;
         tabletPreviewHeight = previewHeight;
     }
@@ -3162,6 +3172,26 @@ public class PostRecyclerViewAdapter extends PagingDataAdapter<Post, RecyclerVie
         TextView subredditTextView;
         TextView userTextView;
         Post.Preview preview;
+
+        private int appliedMediaInsetWidth;
+
+        void setTabletMediaInsets(View media) {
+            if (appliedMediaInsetWidth == tabletMediaInsetWidth) {
+                return;
+            }
+            // Card 2 wraps the media and its overlays in a separate Material card.
+            if (media.getParent() instanceof MaterialCardView && media.getParent() != itemView) {
+                media = (View) media.getParent();
+            }
+            ViewGroup.MarginLayoutParams params = (ViewGroup.MarginLayoutParams) media.getLayoutParams();
+            int previousStart = appliedMediaInsetWidth / 2;
+            int start = tabletMediaInsetWidth / 2;
+            params.setMarginStart(params.getMarginStart() - previousStart + start);
+            params.setMarginEnd(params.getMarginEnd()
+                    - (appliedMediaInsetWidth - previousStart) + (tabletMediaInsetWidth - start));
+            media.setLayoutParams(params);
+            appliedMediaInsetWidth = tabletMediaInsetWidth;
+        }
 
         PostBaseViewHolder(@NonNull View itemView) {
             super(itemView);
