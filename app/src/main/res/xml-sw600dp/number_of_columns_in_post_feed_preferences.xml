@@ -6,6 +6,11 @@
         app:enabled="false" />
 
     <ml.docilealligator.infinityforreddit.customviews.preference.CustomFontSwitchPreference
+        app:defaultValue="true"
+        app:key="tablet_mode"
+        app:title="@string/settings_tablet_mode_title" />
+
+    <ml.docilealligator.infinityforreddit.customviews.preference.CustomFontSwitchPreference
         app:defaultValue="false"
         app:key="enable_fold_support"
         app:title="@string/settings_enable_fold_support_title" />

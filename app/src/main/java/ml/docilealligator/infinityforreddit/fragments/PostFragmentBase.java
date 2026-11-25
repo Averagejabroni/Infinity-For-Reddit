@@ -3,9 +3,16 @@ package ml.docilealligator.infinityforreddit.fragments;
 import static androidx.recyclerview.widget.ItemTouchHelper.ACTION_STATE_IDLE;
 
 import android.content.Context;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.List;
+import kotlin.Unit;
+import ml.docilealligator.infinityforreddit.events.PostVisibilityChangedEvent;
+import ml.docilealligator.infinityforreddit.customviews.PostHideItemAnimator;
 import android.content.SharedPreferences;
 import android.content.res.Configuration;
 import android.content.res.Resources;
+import android.graphics.Point;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.graphics.drawable.ColorDrawable;
@@ -45,9 +52,6 @@ import com.bumptech.glide.RequestManager;
 import org.greenrobot.eventbus.EventBus;
 import org.greenrobot.eventbus.Subscribe;
 
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Executor;
 
 import javax.inject.Inject;
@@ -158,7 +162,95 @@ public abstract class PostFragmentBase extends Fragment {
     private int recyclerViewWidth;
     private int tabletColumnWidth;
     private int tabletPreviewHeight;
-    private int tabletMediaInsetWidth;
+
+    private final Map<String, Boolean> pendingVisibility = new HashMap<>();
+    private final Map<String, Boolean> knownVisibility = new HashMap<>();
+
+    protected abstract boolean isPostVisibilityReady();
+    protected abstract boolean isHiddenListing();
+    protected abstract void setPostVisibility(Map<String, Boolean> changes);
+
+    private kotlin.jvm.functions.Function0<Unit> visibilityAnchorListener;
+
+
+    @Subscribe
+    public void onPostVisibilityChanged(PostVisibilityChangedEvent event) {
+        if (!event.accountName.equals(mActivity.accountName)) {
+            return;
+        }
+        if (java.util.Objects.equals(knownVisibility.get(event.post.getFullName()), event.post.isHidden())) {
+            return;
+        }
+        knownVisibility.put(event.post.getFullName(), event.post.isHidden());
+        pendingVisibility.put(event.post.getFullName(), event.post.isHidden());
+        if (isResumed()) {
+            applyPostVisibility();
+        }
+    }
+
+    private void applyPostVisibility() {
+        if (!isPostVisibilityReady() || getPostAdapter() == null || getView() == null || pendingVisibility.isEmpty()) {
+            return;
+        }
+        RecyclerView recycler = getPostRecyclerView();
+        recycler.stopScroll();
+        if (recycler.getItemAnimator() != null) {
+            recycler.getItemAnimator().endAnimations();
+        }
+        int anchorPosition = -1;
+        int anchorOffset = 0;
+        String anchorId = null;
+        RecyclerView.LayoutManager layout = recycler.getLayoutManager();
+        if (layout != null) {
+            for (int index = 0; index < recycler.getChildCount(); index++) {
+                View child = recycler.getChildAt(index);
+                int position = recycler.getChildAdapterPosition(child);
+                Post post = getPostAdapter().getItemByPosition(position);
+                if (post == null || pendingVisibility.containsKey(post.getFullName())
+                        || layout.getDecoratedBottom(child) <= recycler.getPaddingTop()) {
+                    continue;
+                }
+                anchorPosition = position;
+                anchorOffset = layout.getDecoratedTop(child) - recycler.getPaddingTop();
+                anchorId = post.getFullName();
+                break;
+            }
+        }
+        final String stableId = anchorId;
+        final int stableOffset = anchorOffset;
+        if (visibilityAnchorListener != null) {
+            getPostAdapter().removeOnPagesUpdatedListener(visibilityAnchorListener);
+            visibilityAnchorListener = null;
+        }
+        if (anchorPosition >= 0 && mLinearLayoutManager != null) {
+            visibilityAnchorListener = new kotlin.jvm.functions.Function0<Unit>() {
+                @Override
+                public Unit invoke() {
+                    getPostAdapter().removeOnPagesUpdatedListener(this);
+                    visibilityAnchorListener = null;
+                    if (getView() != null && mLinearLayoutManager != null) {
+                        List<Post> items = getPostAdapter().snapshot().getItems();
+                        for (int index = 0; index < items.size(); index++) {
+                            if (items.get(index).getFullName().equals(stableId)) {
+                                mLinearLayoutManager.scrollToPositionWithOffset(index, stableOffset);
+                                break;
+                            }
+                        }
+                    }
+                    return Unit.INSTANCE;
+                }
+            };
+            getPostAdapter().addOnPagesUpdatedListener(visibilityAnchorListener);
+        }
+        setPostVisibility(new HashMap<>(pendingVisibility));
+        pendingVisibility.clear();
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        applyPostVisibility();
+    }
 
     public PostFragmentBase() {
         // Required empty public constructor
@@ -328,53 +420,29 @@ public abstract class PostFragmentBase extends Fragment {
         });
 
         RecyclerView recyclerView = getPostRecyclerView();
+        recyclerView.setItemAnimator(new PostHideItemAnimator());
         boolean tabletLandscape = isTabletLandscape(getResources());
-        if (tabletLandscape) {
-            // Card rows use the full feed width. Keep the other rows centered.
-            recyclerView.addItemDecoration(new RecyclerView.ItemDecoration() {
-                @Override
-                public void getItemOffsets(@NonNull Rect outRect, @NonNull View view,
-                                           @NonNull RecyclerView parent, @NonNull RecyclerView.State state) {
-                    if (tabletColumnWidth > 0
-                            && !(parent.getChildViewHolder(view)
-                            instanceof PostRecyclerViewAdapter.PostBaseViewHolder)) {
-                        int extraWidth = parent.getWidth() - parent.getPaddingLeft()
-                                - parent.getPaddingRight() - tabletColumnWidth;
-                        outRect.left = Math.max(0, extraWidth) / 2;
-                        outRect.right = Math.max(0, extraWidth) - outRect.left;
-                    }
-                }
-            });
-            recyclerViewWidth = 0;
-            tabletColumnWidth = 0;
-            tabletPreviewHeight = 0;
-            tabletMediaInsetWidth = 0;
-        }
         onLayoutChangeListener = (v, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
             int width = right - left;
             int columnWidth = width;
             int previewHeight = 0;
-            int mediaInsetWidth = 0;
             if (tabletLandscape) {
                 int usableWidth = width - v.getPaddingLeft() - v.getPaddingRight();
                 int usableHeight = bottom - top - v.getPaddingTop() - v.getPaddingBottom();
                 if (usableWidth <= 0 || usableHeight <= 0) {
                     return;
                 }
-                columnWidth = Math.min(usableWidth, usableHeight);
-                mediaInsetWidth = usableWidth - columnWidth;
-                previewHeight = Math.max(1, Math.round(usableHeight * 0.75f));
+                columnWidth = usableWidth;
+                previewHeight = usableHeight;
             }
             if (recyclerViewWidth == width && (!tabletLandscape
-                    || (tabletColumnWidth == columnWidth && tabletPreviewHeight == previewHeight
-                    && tabletMediaInsetWidth == mediaInsetWidth))) {
+                    || (tabletColumnWidth == columnWidth && tabletPreviewHeight == previewHeight))) {
                 return;
             }
             recyclerViewWidth = width;
             if (tabletLandscape) {
                 tabletColumnWidth = columnWidth;
                 tabletPreviewHeight = previewHeight;
-                tabletMediaInsetWidth = mediaInsetWidth;
             }
             PostRecyclerViewAdapter adapter = getPostAdapter();
             if (adapter != null) {
@@ -383,14 +451,12 @@ public abstract class PostFragmentBase extends Fragment {
                 }
                 int finalWidth = columnWidth;
                 int finalPreviewHeight = previewHeight;
-                int finalMediaInsetWidth = mediaInsetWidth;
                 v.post(() -> {
                     if (onLayoutChangeListener == null || !v.isAttachedToWindow()) {
                         return;
                     }
                     if (tabletLandscape) {
-                        recyclerView.invalidateItemDecorations();
-                        adapter.setTabletPreviewBounds(finalWidth, finalPreviewHeight, finalMediaInsetWidth);
+                        adapter.setTabletPreviewBounds(finalWidth, finalPreviewHeight);
                     }
                     adapter.provideItemWidth(Utils.convertPxToDp(finalWidth, mActivity));
                     refreshAdapter();
@@ -434,6 +500,10 @@ public abstract class PostFragmentBase extends Fragment {
 
     @Override
     public void onDestroyView() {
+        if (visibilityAnchorListener != null && getPostAdapter() != null) {
+            getPostAdapter().removeOnPagesUpdatedListener(visibilityAnchorListener);
+            visibilityAnchorListener = null;
+        }
         super.onDestroyView();
         if (onLayoutChangeListener != null) {
             getPostRecyclerView().removeOnLayoutChangeListener(onLayoutChangeListener);
@@ -552,8 +622,13 @@ public abstract class PostFragmentBase extends Fragment {
     protected abstract void refreshAdapter();
 
     protected final boolean isTabletLandscape(Resources resources) {
-        return resources.getBoolean(R.bool.isTablet)
-                && resources.getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE;
+        if (!resources.getBoolean(R.bool.isTablet)
+                || !mSharedPreferences.getBoolean(SharedPreferencesUtils.TABLET_MODE, true)) {
+            return false;
+        }
+        Point screen = new Point();
+        mActivity.getWindowManager().getDefaultDisplay().getRealSize(screen);
+        return screen.x > screen.y;
     }
 
     protected final int getNColumns(Resources resources) {
@@ -676,6 +751,9 @@ public abstract class PostFragmentBase extends Fragment {
         if (!(viewHolder instanceof PostRecyclerViewAdapter.PostBaseViewHolder) &&
                 !(viewHolder instanceof PostRecyclerViewAdapter.PostCompactBaseViewHolder)) {
             return 0;
+        } else if (ml.docilealligator.infinityforreddit.post.PostHideAction.isPending(mActivity.accountName,
+                getPostAdapter().getItemByPosition(viewHolder.getBindingAdapterPosition()))) {
+            return 0;
         } else if (viewHolder instanceof PostRecyclerViewAdapter.PostBaseGalleryTypeViewHolder) {
             if (((PostRecyclerViewAdapter.PostBaseGalleryTypeViewHolder) viewHolder).isSwipeLocked()) {
                 return 0;
@@ -703,6 +781,9 @@ public abstract class PostFragmentBase extends Fragment {
             return;
         }
 
+        if (event.post.isHidden() || isHiddenListing() || knownVisibility.containsKey(event.post.getFullName())) {
+            onPostVisibilityChanged(new PostVisibilityChangedEvent(mActivity.accountName, event.post));
+        }
         ItemSnapshotList<Post> posts = getPostAdapter().snapshot();
         if (event.positionInList >= 0 && event.positionInList < posts.size()) {
             Post post = posts.get(event.positionInList);

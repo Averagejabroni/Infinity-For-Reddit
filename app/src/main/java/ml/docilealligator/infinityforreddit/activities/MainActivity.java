@@ -1381,6 +1381,9 @@ public class MainActivity extends BaseActivity implements SortTypeSelectionCallb
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (isFinishing()) {
+            PostFragment.clearSessionFeedPositions();
+        }
         EventBus.getDefault().unregister(this);
     }
 

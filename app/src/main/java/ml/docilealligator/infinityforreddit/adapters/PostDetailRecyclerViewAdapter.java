@@ -3,6 +3,7 @@ package ml.docilealligator.infinityforreddit.adapters;
 import static ml.docilealligator.infinityforreddit.activities.CommentActivity.WRITE_COMMENT_REQUEST_CODE;
 
 import android.app.Dialog;
+import ml.docilealligator.infinityforreddit.post.PostHideAction;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.res.ColorStateList;
@@ -543,6 +544,9 @@ public class PostDetailRecyclerViewAdapter extends RecyclerView.Adapter<Recycler
     @OptIn(markerClass = UnstableApi.class)
     @Override
     public void onBindViewHolder(@NonNull RecyclerView.ViewHolder holder, int position) {
+        PostHideAction.bind(holder.itemView, mPost, mActivity, mAccountName, mAccessToken,
+                mOauthRetrofit, mRedditDataRoomDatabase, mExecutor, mPostIconAndInfoColor);
+
         if (holder instanceof PostDetailBaseViewHolder) {
             ((PostDetailBaseViewHolder) holder).titleTextView.setText(mPost.getTitle());
             if (mPost.getSubredditNamePrefixed().startsWith("u/")) {
@@ -1707,6 +1711,7 @@ public class PostDetailRecyclerViewAdapter extends RecyclerView.Adapter<Recycler
                 constraintSet.clear(upvoteButton.getId(), ConstraintSet.START);
                 constraintSet.clear(scoreTextView.getId(), ConstraintSet.START);
                 constraintSet.clear(downvoteButton.getId(), ConstraintSet.START);
+                constraintSet.clear(R.id.tablet_hide_button, ConstraintSet.END);
                 constraintSet.clear(saveButton.getId(), ConstraintSet.END);
                 constraintSet.clear(shareButton.getId(), ConstraintSet.END);
                 constraintSet.connect(upvoteButton.getId(), ConstraintSet.END, scoreTextView.getId(), ConstraintSet.START);
@@ -1714,7 +1719,9 @@ public class PostDetailRecyclerViewAdapter extends RecyclerView.Adapter<Recycler
                 constraintSet.connect(downvoteButton.getId(), ConstraintSet.END, ConstraintSet.PARENT_ID, ConstraintSet.END);
                 constraintSet.connect(commentsCountButton.getId(), ConstraintSet.START, saveButton.getId(), ConstraintSet.END);
                 constraintSet.connect(commentsCountButton.getId(), ConstraintSet.END, upvoteButton.getId(), ConstraintSet.START);
-                constraintSet.connect(saveButton.getId(), ConstraintSet.START, shareButton.getId(), ConstraintSet.END);
+                constraintSet.connect(R.id.tablet_hide_button, ConstraintSet.START, shareButton.getId(), ConstraintSet.END);
+                constraintSet.connect(R.id.tablet_hide_button, ConstraintSet.END, saveButton.getId(), ConstraintSet.START);
+                constraintSet.connect(saveButton.getId(), ConstraintSet.START, R.id.tablet_hide_button, ConstraintSet.END);
                 constraintSet.connect(shareButton.getId(), ConstraintSet.START, ConstraintSet.PARENT_ID, ConstraintSet.START);
                 constraintSet.setHorizontalBias(commentsCountButton.getId(), 0);
                 constraintSet.applyTo(bottomConstraintLayout);

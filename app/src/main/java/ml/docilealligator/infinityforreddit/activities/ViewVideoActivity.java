@@ -124,6 +124,7 @@ public class ViewVideoActivity extends AppCompatActivity implements CustomFontRe
     public static final int PLAYBACK_SPEED_150 = 150;
     public static final int PLAYBACK_SPEED_175 = 175;
     public static final int PLAYBACK_SPEED_200 = 200;
+    public static final String EXTRA_HIGHEST_QUALITY = "highest_quality";
     public static final String EXTRA_VIDEO_DOWNLOAD_URL = "EVDU";
     public static final String EXTRA_SUBREDDIT = "ES";
     public static final String EXTRA_ID = "EI";
@@ -405,7 +406,12 @@ public class ViewVideoActivity extends AppCompatActivity implements CustomFontRe
             }
         }
 
+        boolean highestQuality = getIntent().getBooleanExtra(EXTRA_HIGHEST_QUALITY, false);
         trackSelector = new DefaultTrackSelector(this);
+        if (highestQuality) {
+            trackSelector.setParameters(trackSelector.buildUponParameters()
+                    .clearViewportSizeConstraints().setForceHighestSupportedBitrate(true));
+        }
         player = new ExoPlayer.Builder(this)
                 .setTrackSelector(trackSelector)
                 .setRenderersFactory(new DefaultRenderersFactory(this).setEnableDecoderFallback(true))
@@ -556,7 +562,7 @@ public class ViewVideoActivity extends AppCompatActivity implements CustomFontRe
                             }
                         });
 
-                        if (!viewVideoViewModel.getSetDefaultResolutionAlready()) {
+                        if (!highestQuality && !viewVideoViewModel.getSetDefaultResolutionAlready()) {
                             int desiredResolution = 0;
                             if (viewVideoViewModel.isDataSavingMode()) {
                                 if (viewVideoViewModel.getDataSavingModeDefaultResolution() > 0) {

@@ -16,6 +16,10 @@ import androidx.paging.PagingData;
 import androidx.paging.PagingLiveData;
 
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
+import androidx.paging.PagingDataTransforms;
+import ml.docilealligator.infinityforreddit.readpost.ReadPostType;
 import java.util.concurrent.Executor;
 
 import ml.docilealligator.infinityforreddit.database.RedditDataRoomDatabase;
@@ -59,8 +63,25 @@ public class HistoryPostViewModel extends ViewModel {
         posts = Transformations.switchMap(postFilterLiveData, postFilterValue -> PagingLiveData.cachedIn(PagingLiveData.getLiveData(pager), ViewModelKt.getViewModelScope(this)));
     }
 
+    private final MutableLiveData<Map<String, Boolean>> visibilityChanges = new MutableLiveData<>(new HashMap<>());
+    private LiveData<PagingData<Post>> visiblePosts;
+
     public LiveData<PagingData<Post>> getPosts() {
-        return posts;
+        if (visiblePosts == null) {
+            visiblePosts = Transformations.switchMap(visibilityChanges, changes ->
+                    Transformations.map(posts, data -> PagingDataTransforms.filter(data, executor, post -> {
+                        Boolean changed = changes.get(post.getFullName());
+                        boolean hidden = changed == null ? post.isHidden() : changed;
+                        return readPostType == ReadPostType.ANONYMOUS_HIDDEN_POSTS ? hidden : !hidden;
+                    })));
+        }
+        return visiblePosts;
+    }
+
+    public void setPostVisibility(Map<String, Boolean> changes) {
+        Map<String, Boolean> updated = new HashMap<>(visibilityChanges.getValue());
+        updated.putAll(changes);
+        visibilityChanges.setValue(updated);
     }
 
     public HistoryPostPagingSource returnPagingSource() {

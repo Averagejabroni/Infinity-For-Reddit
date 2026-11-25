@@ -36,6 +36,12 @@ import org.greenrobot.eventbus.Subscribe;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
+import java.util.Map;
+import ml.docilealligator.infinityforreddit.events.PostUpdateEventToPostList;
+import java.util.Arrays;
+
+import android.util.LruCache;
+import android.util.Pair;
 import java.util.List;
 import java.util.Locale;
 import java.util.Random;
@@ -70,7 +76,6 @@ import ml.docilealligator.infinityforreddit.events.ChangeSavePostFeedScrolledPos
 import ml.docilealligator.infinityforreddit.events.FlairSelectedEvent;
 import ml.docilealligator.infinityforreddit.events.NeedForPostListFromPostFragmentEvent;
 import ml.docilealligator.infinityforreddit.events.PostUpdateEventToPostDetailFragment;
-import ml.docilealligator.infinityforreddit.events.PostUpdateEventToPostList;
 import ml.docilealligator.infinityforreddit.events.ProvidePostListToViewPostDetailActivityEvent;
 import ml.docilealligator.infinityforreddit.post.Post;
 import ml.docilealligator.infinityforreddit.post.PostPagingSource;
@@ -144,6 +149,21 @@ public class PostFragment extends PostFragmentBase implements FragmentCommunicat
     private int postType;
     private boolean savePostFeedScrolledPosition;
     private PostRecyclerViewAdapter mAdapter;
+    @Override
+    protected boolean isHiddenListing() {
+        return PostPagingSource.USER_WHERE_HIDDEN.equals(where);
+    }
+
+    @Override
+    protected boolean isPostVisibilityReady() {
+        return mPostViewModel != null;
+    }
+
+    @Override
+    protected void setPostVisibility(Map<String, Boolean> changes) {
+        mPostViewModel.setPostVisibility(changes);
+    }
+
     private String subredditName;
     private String username;
     private String query;
@@ -155,6 +175,32 @@ public class PostFragment extends PostFragmentBase implements FragmentCommunicat
     private SortType sortType;
     private PostFilter postFilter;
     private ReadPostsListInterface readPostsList;
+    private static final String RECYCLER_VIEW_OFFSET_STATE = "feed_scroll_offset";
+    private static final LruCache<List<String>, Pair<Integer, Integer>> feedPositions = new LruCache<>(32);
+
+    private List<String> feedPositionKey() {
+        return Arrays.asList(mActivity.accountName, Integer.toString(postType), subredditName, username,
+                query, where, multiRedditPath, concatenatedSubredditNames,
+                sortType == null ? null : sortType.getType().name(),
+                sortType == null || sortType.getTime() == null ? null : sortType.getTime().name());
+    }
+
+    public static void clearSessionFeedPositions() {
+        feedPositions.evictAll();
+    }
+
+    private Pair<Integer, Integer> currentFeedPosition() {
+        if (mLinearLayoutManager != null) {
+            int position = mLinearLayoutManager.findFirstVisibleItemPosition();
+            View anchor = mLinearLayoutManager.findViewByPosition(position);
+            if (anchor != null) {
+                return Pair.create(position, mLinearLayoutManager.getDecoratedTop(anchor)
+                        - binding.recyclerViewPostFragment.getPaddingTop());
+            }
+        }
+        return null;
+    }
+
     private FragmentPostBinding binding;
 
     public PostFragment() {
@@ -727,12 +773,20 @@ public class PostFragment extends PostFragmentBase implements FragmentCommunicat
             binding.recyclerViewPostFragment.addItemDecoration(itemDecoration);
         }
 
-        if (recyclerViewPosition > 0) {
+        Pair<Integer, Integer> rememberedPosition = savedInstanceState == null
+                ? (isTabletLandscape(resources) ? feedPositions.get(feedPositionKey()) : null)
+                : Pair.create(recyclerViewPosition, savedInstanceState.getInt(RECYCLER_VIEW_OFFSET_STATE));
+        if (rememberedPosition != null && (rememberedPosition.first > 0 || rememberedPosition.second != 0)) {
             mAdapter.addLoadStateListener(new Function1<>() {
                 @Override
                 public Unit invoke(CombinedLoadStates combinedLoadStates) {
                     if (combinedLoadStates.getRefresh() instanceof LoadState.NotLoading && mAdapter.getItemCount() > 0) {
-                        binding.recyclerViewPostFragment.scrollToPosition(recyclerViewPosition);
+                        int position = Math.min(rememberedPosition.first, mAdapter.getItemCount() - 1);
+                        if (mLinearLayoutManager != null) {
+                            mLinearLayoutManager.scrollToPositionWithOffset(position, rememberedPosition.second);
+                        } else {
+                            binding.recyclerViewPostFragment.scrollToPosition(position);
+                        }
                         mAdapter.removeLoadStateListener(this);
                     }
                     return Unit.INSTANCE;
@@ -1123,7 +1177,11 @@ public class PostFragment extends PostFragmentBase implements FragmentCommunicat
         super.onSaveInstanceState(outState);
         outState.putBoolean(IS_IN_LAZY_MODE_STATE, isInLazyMode);
         if (mLinearLayoutManager != null) {
-            outState.putInt(RECYCLER_VIEW_POSITION_STATE, mLinearLayoutManager.findFirstVisibleItemPosition());
+            Pair<Integer, Integer> position = currentFeedPosition();
+            if (position != null) {
+                outState.putInt(RECYCLER_VIEW_POSITION_STATE, position.first);
+                outState.putInt(RECYCLER_VIEW_OFFSET_STATE, position.second);
+            }
         } else if (mStaggeredGridLayoutManager != null) {
             int[] into = new int[mStaggeredGridLayoutManager.getSpanCount()];
             outState.putInt(RECYCLER_VIEW_POSITION_STATE,
@@ -1137,6 +1195,12 @@ public class PostFragment extends PostFragmentBase implements FragmentCommunicat
     @Override
     public void onStop() {
         super.onStop();
+        if (binding != null && isTabletLandscape(getResources())) {
+            Pair<Integer, Integer> position = currentFeedPosition();
+            if (position != null) {
+                feedPositions.put(feedPositionKey(), position);
+            }
+        }
         saveCache();
     }
 
@@ -1154,6 +1218,7 @@ public class PostFragment extends PostFragmentBase implements FragmentCommunicat
 
     @Override
     public void refresh() {
+        feedPositions.remove(feedPositionKey());
         binding.fetchPostInfoLinearLayoutPostFragment.setVisibility(View.GONE);
         hasPost = false;
         if (isInLazyMode) {
@@ -1424,6 +1489,21 @@ public class PostFragment extends PostFragmentBase implements FragmentCommunicat
         }
 
         RecyclerView.LayoutManager layoutManager = binding.recyclerViewPostFragment.getLayoutManager();
+        if (isTabletLandscape(getResources()) && layoutManager instanceof LinearLayoutManagerBugFixed) {
+            int offset = 0;
+            if (previousPosition >= 0) {
+                View anchor = layoutManager.findViewByPosition(previousPosition);
+                if (anchor != null) {
+                    offset = layoutManager.getDecoratedTop(anchor) - binding.recyclerViewPostFragment.getPaddingTop();
+                }
+            }
+            mAdapter.notifyItemRangeChanged(0, mAdapter.getItemCount());
+            if (previousPosition >= 0) {
+                mLinearLayoutManager.scrollToPositionWithOffset(previousPosition, offset);
+            }
+            return;
+        }
+
         binding.recyclerViewPostFragment.setAdapter(null);
         binding.recyclerViewPostFragment.setLayoutManager(null);
         binding.recyclerViewPostFragment.setAdapter(mAdapter);

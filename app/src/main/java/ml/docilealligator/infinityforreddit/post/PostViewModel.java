@@ -300,8 +300,26 @@ public class PostViewModel extends ViewModel {
                 && postHistorySharedPreferences.getBoolean((accountName.equals(Account.ANONYMOUS_ACCOUNT) ? "" : accountName) + SharedPreferencesUtils.HIDE_READ_POSTS_AUTOMATICALLY_IN_SEARCH_BASE, false));
     }
 
+    private final MutableLiveData<Map<String, Boolean>> visibilityChanges = new MutableLiveData<>(new HashMap<>());
+    private LiveData<PagingData<Post>> visiblePosts;
+
     public LiveData<PagingData<Post>> getPosts() {
-        return postsWithReadPostsHidden;
+        if (visiblePosts == null) {
+            visiblePosts = Transformations.switchMap(visibilityChanges, changes ->
+                    Transformations.map(postsWithReadPostsHidden, data ->
+                            PagingDataTransforms.filter(data, executor, post -> {
+                                Boolean hidden = changes.get(post.getFullName());
+                                boolean isHidden = hidden == null ? post.isHidden() : hidden;
+                                return PostPagingSource.USER_WHERE_HIDDEN.equals(userWhere) ? isHidden : !isHidden;
+                            })));
+        }
+        return visiblePosts;
+    }
+
+    public void setPostVisibility(Map<String, Boolean> changes) {
+        Map<String, Boolean> updated = new HashMap<>(visibilityChanges.getValue());
+        updated.putAll(changes);
+        visibilityChanges.setValue(updated);
     }
 
     public void hideReadPosts() {

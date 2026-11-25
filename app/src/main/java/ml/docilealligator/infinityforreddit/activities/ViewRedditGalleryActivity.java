@@ -230,6 +230,7 @@ public class ViewRedditGalleryActivity extends AppCompatActivity implements SetA
         }
         sectionsPagerAdapter = new SectionsPagerAdapter(getSupportFragmentManager());
         binding.viewPagerViewRedditGalleryActivity.setAdapter(sectionsPagerAdapter);
+        binding.viewPagerViewRedditGalleryActivity.setOverScrollMode(View.OVER_SCROLL_NEVER);
         binding.viewPagerViewRedditGalleryActivity.setOffscreenPageLimit(3);
         if (savedInstanceState == null) {
             binding.viewPagerViewRedditGalleryActivity.setCurrentItem(getIntent().getIntExtra(EXTRA_GALLERY_ITEM_INDEX, 0), false);

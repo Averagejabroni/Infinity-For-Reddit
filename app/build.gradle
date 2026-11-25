@@ -7,6 +7,8 @@ plugins {
 
 def redditClientId = providers.environmentVariable('REDDIT_CLIENT_ID').orElse('')
 def redditUserAgent = providers.environmentVariable('REDDIT_USER_AGENT').orElse('')
+def tabletKeystore = providers.environmentVariable('TABLET_SIGNING_KEYSTORE')
+def tabletKeystorePassword = providers.environmentVariable('TABLET_SIGNING_PASSWORD')
 
 android {
     compileSdk = 36
@@ -14,14 +16,25 @@ android {
         applicationId "ml.docilealligator.infinityforreddit"
         minSdk 21
         targetSdk 36
-        versionCode 233
-        versionName "8.3.5"
+        versionCode 235
+        versionName "8.3.5-tablet.4"
         buildConfigField 'String', 'REDDIT_CLIENT_ID', groovy.json.JsonOutput.toJson(redditClientId.get())
         buildConfigField 'String', 'REDDIT_USER_AGENT', groovy.json.JsonOutput.toJson(redditUserAgent.get())
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         javaCompileOptions {
             annotationProcessorOptions {
                 arguments = [eventBusIndex: 'ml.docilealligator.infinityforreddit.EventBusIndex']
+            }
+        }
+    }
+    signingConfigs {
+        if (tabletKeystore.isPresent()) {
+            tablet {
+                storeFile file(tabletKeystore.get())
+                storeType 'PKCS12'
+                storePassword tabletKeystorePassword.get()
+                keyAlias 'infinity-for-tablets'
+                keyPassword tabletKeystorePassword.get()
             }
         }
     }
@@ -37,7 +50,9 @@ android {
         }
         debug {
             applicationIdSuffix '.debug'
-            versionNameSuffix ' (DEBUG)'
+            if (tabletKeystore.isPresent()) {
+                signingConfig signingConfigs.tablet
+            }
         }
     }
     compileOptions {

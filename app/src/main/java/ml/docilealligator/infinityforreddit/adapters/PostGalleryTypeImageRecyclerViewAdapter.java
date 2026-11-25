@@ -85,8 +85,8 @@ public class PostGalleryTypeImageRecyclerViewAdapter extends RecyclerView.Adapte
 
     @Override
     public void onBindViewHolder(@NonNull ImageViewHolder holder, int position) {
+        holder.binding.imageViewItemGalleryImageInPostFeed.setPreviewHeightLimit(previewHeightLimit);
         if (previewHeightLimit > 0) {
-            holder.binding.imageViewItemGalleryImageInPostFeed.setPreviewHeightLimit(previewHeightLimit);
             holder.binding.imageViewItemGalleryImageInPostFeed.setScaleType(ImageView.ScaleType.FIT_CENTER);
             holder.binding.imageViewItemGalleryImageInPostFeed.setRatio(isGridLayout || ratio <= 0 ? 1 : ratio);
         } else if (isGridLayout) {

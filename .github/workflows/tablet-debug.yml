@@ -43,6 +43,8 @@ jobs:
           REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
           APK_ENCRYPTION_PASSPHRASE: ${{ github.event.repository.private == false && secrets.APK_ENCRYPTION_PASSPHRASE || '' }}
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+          TABLET_SIGNING_KEYSTORE_BASE64: ${{ secrets.TABLET_SIGNING_KEYSTORE_BASE64 }}
+          TABLET_SIGNING_PASSWORD: ${{ secrets.TABLET_SIGNING_PASSWORD }}
         run: |
           if [[ ! "$REDDIT_CLIENT_ID" =~ ^[a-zA-Z0-9_-]+$ || ! "$REDDIT_USER_AGENT" =~ [^[:space:]] || "$REDDIT_USER_AGENT" =~ [[:cntrl:]] ]]; then
             echo "::error::Set REDDIT_CLIENT_ID and REDDIT_USER_AGENT in GitHub Actions secrets."
@@ -53,12 +55,28 @@ jobs:
             exit 1
           fi
           unset APK_ENCRYPTION_PASSPHRASE
+          if [[ -z "$TABLET_SIGNING_KEYSTORE_BASE64" || -z "$TABLET_SIGNING_PASSWORD" ]]; then
+            echo "::error::Set TABLET_SIGNING_KEYSTORE_BASE64 and TABLET_SIGNING_PASSWORD for installable tablet builds."
+            exit 1
+          fi
+          umask 077
+          export TABLET_SIGNING_KEYSTORE
+          TABLET_SIGNING_KEYSTORE=$(mktemp "$RUNNER_TEMP/tablet-signing.XXXXXXXX")
+          trap 'unlink "$TABLET_SIGNING_KEYSTORE"' EXIT
+          printf '%s' "$TABLET_SIGNING_KEYSTORE_BASE64" | base64 --decode > "$TABLET_SIGNING_KEYSTORE"
+          unset TABLET_SIGNING_KEYSTORE_BASE64
           bash ./gradlew --no-daemon :app:assembleDebug
       - name: Verify APK signature and package
+        env:
+          CONFIGURE_REDDIT: ${{ inputs.configure_reddit == true }}
         run: |
           apk=app/build/outputs/apk/debug/app-debug.apk
           build_tools=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -1)
-          "$build_tools/apksigner" verify --verbose "$apk"
+          signing_details=$("$build_tools/apksigner" verify --verbose --print-certs "$apk")
+          printf '%s\n' "$signing_details"
+          if [[ "$CONFIGURE_REDDIT" == true ]]; then
+            grep -Fx 'Signer #1 certificate SHA-256 digest: b8e35250fe3c8381a54552b907fb8c6fc5b90d8042b3eb38139e4a34830e4fb6' <<< "$signing_details"
+          fi
           package=$("$build_tools/aapt" dump badging "$apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
           test "$package" = ml.docilealligator.infinityforreddit.debug
           sha256sum "$apk"

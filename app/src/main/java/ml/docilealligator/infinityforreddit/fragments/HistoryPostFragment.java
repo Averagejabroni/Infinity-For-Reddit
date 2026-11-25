@@ -117,6 +117,21 @@ public class HistoryPostFragment extends PostFragmentBase implements FragmentCom
     @Inject
     UserProfileImagesBatchLoader loader;
     private PostRecyclerViewAdapter mAdapter;
+    @Override
+    protected boolean isHiddenListing() {
+        return readPostType == ReadPostType.ANONYMOUS_HIDDEN_POSTS;
+    }
+
+    @Override
+    protected boolean isPostVisibilityReady() {
+        return mHistoryPostViewModel != null;
+    }
+
+    @Override
+    protected void setPostVisibility(java.util.Map<String, Boolean> changes) {
+        mHistoryPostViewModel.setPostVisibility(changes);
+    }
+
     private int maxPosition = -1;
     private PostFilter postFilter;
     @ReadPostType
